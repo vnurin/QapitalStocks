@@ -5,34 +5,38 @@
 //  Created by Vahagn Nurijanyan on 2024-11-24.
 //
 
-import Foundation
+//import Foundation
 import SwiftUI
 
+@MainActor
 class StocksManager: ObservableObject {
     
-    /*    enum Error: LocalizedError {
-            case urlError
-            case downloadError
-            case decodingError
-            
-            var errorDescription: String? {
-                switch self {
-                case .urlError:
-                    return "Provided URL is invalid!"
-                case .downloadError:
-                    return "Network isn't accessible!"
-                case .decodingError:
-                    return "Stock data failed!"
-                }
+    //customized errors
+    enum Error: LocalizedError, Equatable {
+        case urlError
+        case serverError(code: Int)
+        case jsonError
+        case unknownError
+        
+        var errorDescription: String? {
+            switch self {
+            case .urlError:
+                return "Provided URL is invalid!"
+            case .serverError(let code):
+                return "Server error (\(code))!"
+            case .jsonError:
+                return "Stock data failed!"
+            case .unknownError:
+                return "Unknown error!"
             }
-        }*/
-
+        }
+    }
+    
     struct Constants {
-        static let urlString = "https://apple.com"
+        static let baseUrlString = "https://api.tradewave.net/v2/"
         static let title = "Stocks"
-        static let searchFields = "Search by Name or Ticker"
+        static let searchField = "Search by Name or Ticker"
         static let noStocksMessage = "No stocks found!"
-        static let alertMessage = "No network connection!"
         static let sampleStocks: [Stock] = [
             .init(ticker: "AAPL", name: "Apple Inc.", currentPrice: 123.45),
             .init(ticker: "GOOG", name: "Google Inc.", currentPrice: 67.89),
@@ -40,12 +44,21 @@ class StocksManager: ObservableObject {
         ]
     }
         
+    @Published var monitor = NetworkMonitor()
+    
+    //use Local or remote data
     var getRemotly: Bool
-    var stocks: [Stock] {
+    private let pageSize = 50
+    private var pageNumber = 0
+    private var urlString: String {
+        StocksManager.Constants.baseUrlString + "exchanges/NASDAQ/symbols?page=\(pageNumber)&pageSize=\(pageSize)"
+    }
+    @Published var stocks: [Stock] {
         didSet {
             filterStocks()
         }
     }
+    
     @AppStorage("searchText") var searchText = ""
     {
         didSet {
@@ -53,7 +66,7 @@ class StocksManager: ObservableObject {
         }
     }
     @Published var shownStocks = [Stock]()
-    @Published var error: Error?
+    @Published var error: StocksManager.Error?
     @Published var isLoading = false
     
     init(getRemotly: Bool = false, stocks: [Stock] = []) {
@@ -62,68 +75,50 @@ class StocksManager: ObservableObject {
         filterStocks()
     }
     
-    func fetchStocks() async {
-        getRemotly ? await fetchStocksRemotly() : await fetchStocksLocally()
-    }
-    
-    private func fetchStocksRemotly() async {
-        guard let url = URL(string: Constants.urlString) else {
-            DispatchQueue.main.async { [weak self] in
-                self?.error = URLError(URLError.badURL)
-            }
-            print("Provided URL is invalid!")
-            return
-        }
-        DispatchQueue.main.async { [weak self] in
-            self?.isLoading = true
-        }
-        let fetchTask = Task {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let stocks = try JSONDecoder().decode([Stock].self, from: data)
-            return stocks
-        }
-        let result = await fetchTask.result
-        DispatchQueue.main.async { [weak self] in
-            self?.isLoading = false
-            /*
-            do {
-                self?.stocks = try result.get()
-            } catch {
-                self?.error = error
-            }
-             */
-            switch result {
-            case .success(let stocks):
-                self?.stocks = stocks
-            case .failure(let error):
-                self?.error = error
-                print("Stock data failed!")
-            }
+    func loadData() {
+        Task {
+            await fetchStocks()
         }
     }
     
-    private func fetchStocksLocally() async {
+    private func fetchStocks() async {
+        isLoading = true
+        do {
+            stocks = getRemotly ? try await fetchStocksRemotly() : try await fetchStocksLocally()
+        } catch is StocksManager.Error {
+            self.error = error
+        } catch {
+            self.error = .unknownError
+        }
+        isLoading = false
+    }
+    
+     func fetchStocksRemotly() async throws -> [Stock] {
+        
+         guard let url = URL(string: urlString) else {
+            throw Error.urlError
+        }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            throw Error.serverError(code: httpResponse.statusCode)
+        }
+         if let stocks = try? JSONDecoder().decode([Stock].self, from: data) {
+             return stocks
+         }
+         throw Error.jsonError
+    }
+
+    private func fetchStocksLocally() async throws -> [Stock] {
         guard let url = Bundle.main.url(forResource: "stocks", withExtension: "json") else {
-            DispatchQueue.main.async { [weak self] in
-                self?.error = URLError(URLError.badURL)
-            }
-            print("Provided URL is invalid!")
-            return
+            throw Error.urlError
         }
-        let fetchTask = Task {
-            let data = try Data(contentsOf: url)
+        let data = try Data(contentsOf: url)
+        do {
             let stocks = try JSONDecoder().decode([Stock].self, from: data)
             return stocks
         }
-        let result = await fetchTask.result
-        DispatchQueue.main.async { [weak self] in
-            switch result {
-            case .success(let stocks):
-                self?.stocks = stocks
-            case .failure(let error):
-                self?.error = error
-                print("Stock data failed!")
-            }
+        catch {
+            throw Error.jsonError
         }
     }
     
