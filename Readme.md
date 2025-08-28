@@ -2,7 +2,7 @@
 
 ## Supported Platforms
 
-The app supports devices running iOS 16.0 and above.
+The app supports devices running iOS 17.0 and above.
 
 ## Stock Search Functionality
 
@@ -16,5 +16,5 @@ Users can search for stocks by either their name or ticker symbol.
 
 ## Networking Error Handling
 
-- The app provides a single, user-friendly error message for all network-related issues because typically, failures occur only due to lack of internet connectivity, so the error message focuses on that scenario.
+- The app provides a user-friendly error messages.
 
