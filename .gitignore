@@ -62,4 +62,4 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 # MacOS
-*.DS_Store
+.DS_Store
