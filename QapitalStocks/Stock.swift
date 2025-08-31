@@ -8,7 +8,7 @@
 import Foundation
 
 struct Stock: Codable, Identifiable, Hashable {
-    let id = UUID()
+    var id = UUID()
     let ticker: String
     let name: String
     let currentPrice: Double

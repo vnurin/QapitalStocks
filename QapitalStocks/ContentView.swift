@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject var viewModel = StocksManager()
+    @State var viewModel = StocksManager()
     
     var body: some View {
         ZStack {
@@ -22,17 +22,17 @@ struct ContentView: View {
                 }
                 .navigationTitle(StocksManager.Constants.title)
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $viewModel.searchText, prompt: StocksManager.Constants.searchFields)
+                .searchable(text: $viewModel.searchText, prompt: StocksManager.Constants.searchField)
                 .refreshable {
-                    await viewModel.fetchStocks()
+                    viewModel.loadData()
                 }
                 .navigationDestination(for: Stock.self) { stock in
                     DetailsView(stock: stock)
                 }
             }
-            .task {
+            .onAppear {
                 guard viewModel.stocks.isEmpty else { return }
-                await viewModel.fetchStocks()
+                viewModel.loadData()
             }
             if !viewModel.searchText.isEmpty && !viewModel.stocks.isEmpty && viewModel.shownStocks.isEmpty {
                 Text(StocksManager.Constants.noStocksMessage)
@@ -44,8 +44,12 @@ struct ContentView: View {
                     .scaleEffect(2.0)
             }
         }
+        .alert(isPresented: $viewModel.monitor.isNetworkAvailable
+               , content: {
+            Alert(title: Text("Network Status"), message: Text("No Internet Connection!"))
+        })
         .alert(isPresented: Binding(get: { viewModel.error != nil }, set: { _ in viewModel.error = nil })) {
-            Alert(title: Text("Error"), message: Text(StocksManager.Constants.alertMessage))
+            Alert(title: Text("Error"), message: Text(viewModel.error?.localizedDescription ?? "Error!"))
         }
     }
 }
